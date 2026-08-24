@@ -97,7 +97,8 @@ async def stream_message(
                     keepalive_counter = 0
 
         if stream_error:
-            yield f"data: {json.dumps({'type': 'chunk', 'content': f'\\n\\n⚠️ Erro: {stream_error}'})}\n\n"
+            error_msg = f"\n\n⚠️ Erro: {stream_error}"
+            yield f"data: {json.dumps({'type': 'chunk', 'content': error_msg})}\n\n"
 
         yield "data: [DONE]\n\n"
 
