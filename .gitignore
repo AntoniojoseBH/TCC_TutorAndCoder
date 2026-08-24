@@ -1,0 +1,5 @@
+.env
+venv/
+tutor-frontend/node_modules/
+__pycache__/
+*.pyc
