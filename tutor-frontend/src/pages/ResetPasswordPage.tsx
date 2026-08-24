@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 
+const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:8000";
+
 interface Props {
   token: string;
   onDone: () => void;
@@ -20,7 +22,7 @@ export default function ResetPasswordPage({ token, onDone }: Props) {
     if (password !== confirm) { setError("As senhas não coincidem."); return; }
     setLoading(true);
     try {
-      const r = await fetch("http://localhost:8000/auth/reset-password", {
+      const r = await fetch(`${API_BASE}/auth/reset-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, new_password: password }),

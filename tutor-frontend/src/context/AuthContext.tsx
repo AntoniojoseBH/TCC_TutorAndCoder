@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { getToken, setToken, clearToken, apiGet } from "../api";
 
+const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:8000";
+
 interface User { id: string; name: string; onboarding_done: boolean; level?: string; }
 interface AuthCtx {
   user: User | null;
@@ -43,7 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function login(email: string, password: string): Promise<string | null> {
     try {
-      const r = await fetch("http://localhost:8000/auth/login", {
+      const r = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ username: email, password }),
@@ -64,7 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function register(name: string, email: string, password: string): Promise<string | null> {
     try {
-      const r = await fetch("http://localhost:8000/auth/register", {
+      const r = await fetch(`${API_BASE}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, password }),
