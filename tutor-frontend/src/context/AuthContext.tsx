@@ -11,6 +11,10 @@ interface AuthCtx {
   register: (name: string, email: string, password: string) => Promise<string | null>;
   logout: () => void;
   setOnboardingDone: (v: boolean) => void;
+  // true só no momento em que o onboarding acaba de ser concluído nesta
+  // sessão — usado para exibir o modal de boas-vindas uma única vez.
+  justCompletedOnboarding: boolean;
+  clearJustCompletedOnboarding: () => void;
 }
 
 const Ctx = createContext<AuthCtx>(null!);
@@ -19,6 +23,7 @@ export const useAuth = () => useContext(Ctx);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setTok] = useState<string | null>(getToken());
+  const [justCompletedOnboarding, setJustCompletedOnboarding] = useState(false);
 
   const loadProfile = useCallback(async () => {
     try {
@@ -47,7 +52,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const r = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "ngrok-skip-browser-warning": "true",
+        },
         body: new URLSearchParams({ username: email, password }),
       });
       if (!r.ok) {
@@ -68,7 +76,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const r = await fetch(`${API_BASE}/auth/register`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
+        },
         body: JSON.stringify({ name, email, password }),
       });
       if (!r.ok) {
@@ -94,10 +105,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   function logout() { clearToken(); setTok(null); setUser(null); }
   function setOnboardingDone(v: boolean) {
     setUser(u => u ? { ...u, onboarding_done: v } : u);
+    if (v) setJustCompletedOnboarding(true);
+  }
+  function clearJustCompletedOnboarding() {
+    setJustCompletedOnboarding(false);
   }
 
   return (
-    <Ctx.Provider value={{ user, token, login, register, logout, setOnboardingDone }}>
+    <Ctx.Provider value={{
+      user, token, login, register, logout, setOnboardingDone,
+      justCompletedOnboarding, clearJustCompletedOnboarding,
+    }}>
       {children}
     </Ctx.Provider>
   );

@@ -128,12 +128,28 @@ def write_multiple_files(student_id: str, files: dict[str, str]) -> list[FileRes
     return results
 
 
-def get_project_summary(student_id: str) -> str:
-    base = PROJECTS_ROOT / student_id
+def get_project_summary(student_id: str, project: str | None = None) -> str:
+    """
+    Monta um resumo textual do projeto para análise pela IA.
+
+    IMPORTANTE: se "project" for informado, o resumo é restrito SOMENTE
+    aos arquivos daquele projeto (subpasta) — nunca varre o workspace
+    inteiro do estudante. Sem isso, a análise mistura arquivos de todos
+    os projetos que o estudante já criou num único relatório, o que é
+    incorreto e confunde o resultado apresentado ao usuário.
+    """
+    workspace_root = PROJECTS_ROOT / student_id
+
+    if project and project != "_root":
+        base = workspace_root / project
+    else:
+        base = workspace_root
+
     if not base.exists():
         return "Projeto vazio — nenhum arquivo ainda."
+
     summary_parts = ["=== ESTRUTURA DO PROJETO ==="]
-    file_list = list_files(student_id)
+    file_list = list_files(student_id, directory=project if project and project != "_root" else ".")
     summary_parts.append(file_list.content or "(vazio)")
     summary_parts.append("\n=== CONTEÚDO DOS ARQUIVOS ===")
     for f in sorted(base.rglob("*")):

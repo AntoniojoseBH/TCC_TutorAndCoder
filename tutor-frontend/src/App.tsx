@@ -8,9 +8,10 @@ import ProjectsPage from "./pages/ProjectsPage";
 import MetricsPage from "./pages/MetricsPage";
 import ProfilePage from "./pages/ProfilePage";
 import Sidebar from "./components/Sidebar";
+import WelcomeModal from "./components/WelcomeModal";
 
 function App() {
-  const { user, token } = useAuth();
+  const { user, token, justCompletedOnboarding, clearJustCompletedOnboarding } = useAuth();
   const [page, setPage] = useState("chat");
   // Incrementado sempre que "Projetos" é clicado enquanto já ativo,
   // forçando o ProjectsPage a remontar e voltar para a lista principal.
@@ -50,6 +51,9 @@ function App() {
         {page === "metrics"  && <MetricsPage />}
         {page === "profile"  && <ProfilePage onSaved={() => setPage("chat")} />}
       </main>
+      {justCompletedOnboarding && (
+        <WelcomeModal userName={user.name} onClose={clearJustCompletedOnboarding} />
+      )}
     </div>
   );
 }

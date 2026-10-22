@@ -1,14 +1,21 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
-import { apiGet, apiPost, apiPatch, apiDelete, streamChat } from "../api";
+import { apiGet, apiPost, apiPatch, apiDelete, streamChat, ChatAttachment } from "../api";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { Plus, Search, MoreVertical, Edit2, Trash2, X, Send, Check } from "lucide-react";
+import mermaid from "mermaid";
+import { Plus, Search, MoreVertical, Edit2, Trash2, X, Send, Check, Paperclip, FileText } from "lucide-react";
+
+mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "loose" });
 
 interface Session { session_id: string; title: string; started_at: string; message_count: number; }
-interface Message { role: string; content: string; }
+interface Message {
+  role: string;
+  content: string;
+  attachment?: { filename: string; media_type: string; previewUrl?: string };
+}
 
 const THINKING = ["Analisando sua pergunta...", "Consultando os agentes...", "Elaborando a resposta...", "Preparando exemplos..."];
 
@@ -28,6 +35,55 @@ function ThinkingDots() {
       </div>
       <span className="text-muted text-sm">{THINKING[idx]}</span>
     </div>
+  );
+}
+
+// Renderiza diagramas Mermaid (fluxogramas, grafos, árvores) em SVG real,
+// evitando que a IA precise "desenhar" ASCII à mão — tarefa em que LLMs
+// cometem erros estruturais frequentes por não conseguir revisar
+// visualmente o que já foi gerado.
+function MermaidDiagram({ code }: { code: string }) {
+  const [svg, setSvg] = useState<string>("");
+  const [error, setError] = useState(false);
+  const idRef = useRef(`mermaid-${Math.random().toString(36).slice(2)}`);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function renderDiagram() {
+      try {
+        // Valida a sintaxe ANTES de renderizar. O mermaid.render() sozinho
+        // não rejeita a Promise em caso de sintaxe inválida — em vez disso,
+        // resolve "com sucesso" retornando um SVG que É o próprio desenho
+        // de erro (ícone de bomba vermelha), que nosso .catch() nunca pegava.
+        // mermaid.parse() sim rejeita corretamente nesse caso.
+        await mermaid.parse(code);
+        const result = await mermaid.render(idRef.current, code);
+        if (!cancelled) { setSvg(result.svg); setError(false); }
+      } catch {
+        if (!cancelled) setError(true);
+      }
+    }
+
+    renderDiagram();
+    return () => { cancelled = true; };
+  }, [code]);
+
+  if (error) {
+    // Enquanto a resposta ainda está sendo transmitida (streaming), o código
+    // mermaid pode estar incompleto e falhar — mostramos o texto bruto até
+    // a sintaxe ficar completa e válida.
+    return (
+      <div className="rounded-lg border border-border overflow-hidden my-2">
+        <div className="px-3 py-1.5 bg-panel border-b border-border text-xs text-muted">diagrama</div>
+        <pre className="p-3 text-xs text-muted overflow-x-auto whitespace-pre-wrap font-mono">{code}</pre>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-panel my-2 p-4 overflow-x-auto flex justify-center"
+      dangerouslySetInnerHTML={{ __html: svg }} />
   );
 }
 
@@ -78,8 +134,59 @@ function highlightChildren(children: React.ReactNode, term: string): React.React
   });
 }
 
+// Conserta tabelas Markdown malformadas ANTES de renderizar, independente
+// de a IA ter seguido corretamente as instruções de formatação ou não.
+// Cobre dois padrões observados na prática:
+//   1) Falta a linha separadora obrigatória (|---|---|) entre cabeçalho e corpo
+//   2) Linhas "ruído" contendo só "|" soltos entre o cabeçalho e os dados
+// Esse reparo só age logo após uma linha identificada como cabeçalho de
+// tabela (linha "|...|" que não é precedida por outra linha de tabela),
+// minimizando o risco de mexer em conteúdo de texto comum que use "|".
+function repairMarkdownTables(text: string): string {
+  const lines = text.split("\n");
+  const result: string[] = [];
+  const isTableRow = (l: string) => /^\s*\|.*\|\s*$/.test(l) && l.replace(/\|/g, "").trim().length > 0;
+  const isNoiseRow = (l: string) => /^\s*\|\s*\|?\s*$/.test(l); // linha só com "|" solto(s)
+  const isBlankLine = (l: string) => l.trim() === "";
+  const isValidSeparator = (l: string) => /^\s*\|?[\s:|-]+\|?\s*$/.test(l) && l.includes("-");
+
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const prevWasTableRow = result.length > 0 && isTableRow(result[result.length - 1]);
+
+    if (isTableRow(line) && !prevWasTableRow) {
+      // Encontrou o início de uma tabela (linha de cabeçalho)
+      result.push(line);
+      const colCount = line.split("|").filter((c, idx, arr) =>
+        !(idx === 0 && c.trim() === "") && !(idx === arr.length - 1 && c.trim() === "")
+      ).length;
+
+      // Pula linhas de ruído (só "|" solto, OU linhas em branco intercaladas
+      // entre elas) logo após o cabeçalho
+      let j = i + 1;
+      while (j < lines.length && (isNoiseRow(lines[j]) || isBlankLine(lines[j]))) j++;
+
+      if (j < lines.length && isValidSeparator(lines[j])) {
+        result.push(lines[j]);
+        j++;
+      } else {
+        // Insere a linha separadora que faltava
+        result.push("|" + Array(Math.max(colCount, 1)).fill("---").join("|") + "|");
+      }
+      i = j;
+      continue;
+    }
+
+    result.push(line);
+    i++;
+  }
+  return result.join("\n");
+}
+
 function MsgContent({ content, highlight }: { content: string; highlight?: string }) {
   const hl = highlight && highlight.trim() ? highlight : undefined;
+  const safeContent = repairMarkdownTables(content);
 
   const makeWrapper = (Tag: string) => ({ children, ...props }: any) => (
     <Tag {...props}>{hl ? highlightChildren(children, hl) : children}</Tag>
@@ -88,10 +195,24 @@ function MsgContent({ content, highlight }: { content: string; highlight?: strin
   return (
     <ReactMarkdown remarkPlugins={[remarkGfm]}
       components={{
-        code: ({ node, inline, className, children, ...p }: any) =>
-          inline
+        code: ({ node, className, children, ...p }: any) => {
+          // A partir do react-markdown v9, a prop "inline" não é mais enviada
+          // (mudança de comportamento da própria biblioteca). O jeito correto
+          // de diferenciar agora é pela presença de className com "language-":
+          // blocos de código (```texto```) sempre recebem essa classe;
+          // código inline (`texto`) nunca recebe.
+          const hasLanguageClass = /language-(\w+)/.test(className || "");
+          const lang = /language-(\w+)/.exec(className || "")?.[1] || "text";
+          const isInlineCode = !hasLanguageClass;
+
+          if (!isInlineCode && lang === "mermaid") {
+            const code = String(children).replace(/\n$/, "");
+            return <MermaidDiagram code={code} />;
+          }
+          return isInlineCode
             ? <code className="bg-panel text-accent px-1 py-0.5 rounded text-xs font-mono" {...p}>{children}</code>
-            : <CodeBlock className={className}>{children}</CodeBlock>,
+            : <CodeBlock className={className}>{children}</CodeBlock>;
+        },
         p:          makeWrapper("p"),
         h1:         makeWrapper("h1"),
         h2:         makeWrapper("h2"),
@@ -104,7 +225,7 @@ function MsgContent({ content, highlight }: { content: string; highlight?: strin
         strong:     makeWrapper("strong"),
         em:         makeWrapper("em"),
       }}>
-      {content}
+      {safeContent}
     </ReactMarkdown>
   );
 }
@@ -146,6 +267,70 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const sendingRef = useRef(false); // trava síncrona contra duplo envio
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Anexo selecionado, pronto para ser enviado junto com a próxima mensagem
+  const [attachment, setAttachment] = useState<ChatAttachment | null>(null);
+  const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null); // URL local só para imagens
+  const [attachError, setAttachError] = useState("");
+
+  const MAX_ATTACHMENT_MB = 10;
+  const ACCEPTED_TYPES = [
+    "image/png", "image/jpeg", "image/webp", "image/gif",
+    "application/pdf",
+    "text/plain", "text/markdown", "text/x-python", "text/javascript",
+    "application/json",
+  ];
+
+  function handleAttachClick() {
+    fileInputRef.current?.click();
+  }
+
+  function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite selecionar o mesmo arquivo de novo depois
+    if (!file) return;
+    setAttachError("");
+
+    if (file.size > MAX_ATTACHMENT_MB * 1024 * 1024) {
+      setAttachError(`Arquivo muito grande (máximo ${MAX_ATTACHMENT_MB}MB).`);
+      return;
+    }
+
+    // Detecta o tipo mesmo quando o navegador não preenche file.type
+    // (comum em .py, .md em alguns sistemas)
+    const ext = file.name.split(".").pop()?.toLowerCase() || "";
+    const extToType: Record<string, string> = {
+      py: "text/x-python", js: "text/javascript", ts: "text/plain",
+      md: "text/markdown", txt: "text/plain", json: "application/json",
+      java: "text/plain", c: "text/plain", cpp: "text/plain",
+    };
+    const mediaType = file.type || extToType[ext] || "text/plain";
+
+    const isImage = mediaType.startsWith("image/");
+    const isKnown = ACCEPTED_TYPES.includes(mediaType) || extToType[ext];
+
+    if (!isKnown) {
+      setAttachError("Tipo de arquivo não suportado. Envie imagem, PDF ou arquivo de texto/código.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const base64 = result.split(",")[1] || "";
+      setAttachment({ filename: file.name, media_type: mediaType, data: base64 });
+      setAttachmentPreview(isImage ? result : null);
+    };
+    reader.onerror = () => setAttachError("Não foi possível ler o arquivo.");
+    reader.readAsDataURL(file);
+  }
+
+  function clearAttachment() {
+    setAttachment(null);
+    setAttachmentPreview(null);
+    setAttachError("");
+  }
 
   useEffect(() => { loadSessions(); }, []);
   useEffect(() => { scrollToBottom(); }, [messages, streaming]);
@@ -191,6 +376,7 @@ export default function ChatPage() {
     setMenuSid(null);
   }
 
+
   function buildContext(msgs: Message[], prompt: string) {
     const hist = msgs.slice(-6).filter(m => m.role !== "system");
     if (!hist.length) return prompt;
@@ -201,25 +387,46 @@ export default function ChatPage() {
   async function sendMessage() {
     // Trava síncrona via ref — evita duplo envio quando o Enter dispara
     // duas vezes antes do estado "streaming" (assíncrono) ser atualizado.
-    if (!input.trim() || streaming || sendingRef.current) return;
+    // Permite enviar só o anexo, sem texto (ex: um print sem legenda).
+    if ((!input.trim() && !attachment) || streaming || sendingRef.current) return;
     sendingRef.current = true;
 
     const prompt = input.trim();
+    const pendingAttachment = attachment; // captura antes de limpar o estado
     setInput("");
-    const userMsg: Message = { role: "user", content: prompt };
+    clearAttachment();
+    // Reseta a altura do campo de texto manualmente — o auto-resize ajusta
+    // a altura via DOM direto (fora do controle do React), então limpar o
+    // valor via setInput não é suficiente para encolher o campo de volta.
+    if (inputRef.current) inputRef.current.style.height = "auto";
+
+    const userMsg: Message = {
+      role: "user",
+      content: prompt || `📎 ${pendingAttachment?.filename}`,
+      attachment: pendingAttachment
+        ? {
+            filename: pendingAttachment.filename,
+            media_type: pendingAttachment.media_type,
+            previewUrl: pendingAttachment.media_type.startsWith("image/")
+              ? `data:${pendingAttachment.media_type};base64,${pendingAttachment.data}`
+              : undefined,
+          }
+        : undefined,
+    };
     const newMsgs = [...messages, userMsg];
     setMessages(newMsgs);
     setStreaming(true);
 
-    // Save user message
-    apiPost("/chat/save-message", { session_id: sessionId, role: "user", content: prompt });
+    // Save user message (o anexo em si não é persistido no histórico ainda —
+    // fica disponível só durante a sessão atual do navegador)
+    apiPost("/chat/save-message", { session_id: sessionId, role: "user", content: userMsg.content });
 
     let accumulated = "";
     const startTime = Date.now();
     try {
-      const fullMsg = buildContext(newMsgs, prompt);
+      const fullMsg = buildContext(newMsgs, prompt || `[Arquivo anexado: ${pendingAttachment?.filename}]`);
       setMessages(m => [...m, { role: "assistant", content: "" }]);
-      for await (const chunk of streamChat(fullMsg, sessionId)) {
+      for await (const chunk of streamChat(fullMsg, sessionId, pendingAttachment)) {
         accumulated += chunk;
         const current = accumulated;
         setMessages(m => {
@@ -468,7 +675,22 @@ export default function ChatPage() {
                     : "bg-accent text-white"}`}>
                     {isAssistant
                       ? <MsgContent content={msg.content} highlight={ctrlf || undefined}/>
-                      : <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                      : (
+                        <>
+                          {msg.attachment && (
+                            msg.attachment.previewUrl ? (
+                              <img src={msg.attachment.previewUrl} alt={msg.attachment.filename}
+                                className="max-w-full max-h-64 rounded-lg mb-2 border border-white/20"/>
+                            ) : (
+                              <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 mb-2">
+                                <FileText size={16} className="flex-shrink-0"/>
+                                <span className="text-xs truncate">{msg.attachment.filename}</span>
+                              </div>
+                            )
+                          )}
+                          <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                        </>
+                      )
                     }
                     {/* Streaming cursor */}
                     {isAssistant && isLast && streaming && msg.content &&
@@ -496,8 +718,34 @@ export default function ChatPage() {
 
         {/* Input */}
         <div className="border-t border-border bg-surface px-4 py-3">
+          {/* Prévia do anexo selecionado, antes de enviar */}
+          {attachment && (
+            <div className="flex items-center gap-2 mb-2 bg-bg border border-border rounded-lg px-3 py-2">
+              {attachmentPreview ? (
+                <img src={attachmentPreview} alt={attachment.filename}
+                  className="w-10 h-10 object-cover rounded flex-shrink-0"/>
+              ) : (
+                <div className="w-10 h-10 rounded bg-panel flex items-center justify-center flex-shrink-0">
+                  <FileText size={16} className="text-muted"/>
+                </div>
+              )}
+              <span className="text-xs text-soft truncate flex-1">{attachment.filename}</span>
+              <button onClick={clearAttachment} className="text-muted hover:text-danger flex-shrink-0">
+                <X size={14}/>
+              </button>
+            </div>
+          )}
+          {attachError && <p className="text-danger text-xs mb-2">{attachError}</p>}
+
           <div className="flex items-end gap-3 bg-bg border border-border rounded-xl p-3
             focus-within:border-accent transition-colors">
+            <input ref={fileInputRef} type="file" className="hidden"
+              accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,.txt,.md,.py,.js,.ts,.json,.java,.c,.cpp"
+              onChange={handleFileSelected}/>
+            <button onClick={handleAttachClick} disabled={streaming} title="Anexar arquivo"
+              className="p-1.5 text-muted hover:text-text transition-colors disabled:opacity-40 flex-shrink-0">
+              <Paperclip size={17}/>
+            </button>
             <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)}
               onKeyDown={handleKey} rows={1} disabled={streaming}
               placeholder="Pergunte algo, cole um código, ou peça para criar um projeto..."
@@ -509,7 +757,7 @@ export default function ChatPage() {
                 t.style.height = "auto";
                 t.style.height = Math.min(t.scrollHeight, 160) + "px";
               }}/>
-            <button onClick={sendMessage} disabled={!input.trim() || streaming}
+            <button onClick={sendMessage} disabled={(!input.trim() && !attachment) || streaming}
               className="p-2 bg-accent rounded-lg text-white hover:bg-accent-hover
                 transition-colors disabled:opacity-40 flex-shrink-0">
               <Send size={15}/>

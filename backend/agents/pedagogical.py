@@ -93,7 +93,6 @@ AREAS = {
 SUPPORTED_LANGUAGES = ["Python", "C", "C++", "Java", "JavaScript", "TypeScript",
                         "SQL", "HTML/CSS", "Assembly", "Go", "Rust"]
 
-
 @tool
 async def suggest_next_concept(student_profile_json: str) -> str:
     """
@@ -122,7 +121,6 @@ async def suggest_next_concept(student_profile_json: str) -> str:
     reason = "em progresso, precisa de reforço" if score > 0 else "pré-requisitos cumpridos"
     return json.dumps({"concept": concept, "area": area, "reason": reason, "current_score": score})
 
-
 @tool
 async def generate_explanation(concept: str, level: str, learning_style: str) -> str:
     """
@@ -133,9 +131,12 @@ async def generate_explanation(concept: str, level: str, learning_style: str) ->
     """
     templates = {
         "visual": (
-            f"Explique '{concept}' usando diagramas ASCII, tabelas comparativas "
-            f"e exemplos visuais passo a passo. Se for um conceito de rede ou SO, "
-            f"desenhe o fluxo de dados ou estados do sistema."
+            f"Explique '{concept}' usando tabelas comparativas (formato Markdown "
+            f"com linha separadora obrigatória) e exemplos visuais passo a passo. "
+            f"Se for um conceito de rede, SO, estrutura de dados, grafo, árvore ou "
+            f"fluxo de estados, NUNCA desenhe em ASCII — em vez disso, gere um bloco "
+            f"de código com a linguagem 'mermaid' (ex: ```mermaid\ngraph TD\n...```), "
+            f"pois o frontend renderiza isso como diagrama visual real."
         ),
         "textual": (
             f"Explique '{concept}' com: (1) definição formal, "
@@ -154,7 +155,6 @@ async def generate_explanation(concept: str, level: str, learning_style: str) ->
     style = learning_style if learning_style in templates else "visual"
     lvl = level if level in level_guidance else "beginner"
     return f"{templates[style]} {level_guidance[lvl]}"
-
 
 @tool
 async def get_exercise_for_concept(concept: str, difficulty: float) -> str:
@@ -194,7 +194,6 @@ async def get_exercise_for_concept(concept: str, difficulty: float) -> str:
         "test_cases": exercise.test_cases,
     })
 
-
 @tool
 async def classify_student_intent(message: str) -> str:
     """
@@ -230,7 +229,6 @@ async def classify_student_intent(message: str) -> str:
     elif "?" in message:
         return "question"
     return "other"
-
 
 @tool
 async def get_area_for_topic(topic: str) -> str:
@@ -283,7 +281,6 @@ async def get_area_for_topic(topic: str) -> str:
 
     return json.dumps({"area": "Programação", "related_concepts": AREAS["Programação"][:4]})
 
-
 def create_pedagogical_agent() -> Agent:
     return Agent(
         name="PedagogicalAgent",
@@ -334,8 +331,44 @@ def create_pedagogical_agent() -> Agent:
             "       'Perfeito! Quer ver mais exemplos ou explorar outro conceito?'",
             "",
             "REGRAS:",
+            "  - [REGRA CRÍTICA DE FORMATAÇÃO] Ao gerar tabelas em Markdown, siga",
+            "    ESTRITAMENTE este formato, sem exceções, mesmo em respostas curtas:",
+            "    1) Uma linha de cabeçalho: | Coluna A | Coluna B |",
+            "    2) Uma linha separadora OBRIGATÓRIA logo abaixo: |---|---|",
+            "    3) As linhas de dados, uma por linha, sem pular linha no meio de uma linha de dados.",
+            "    Exemplo CORRETO:",
+            "    | Recursão | Iteração |",
+            "    |---|---|",
+            "    | Chama a si mesma | Usa loops |",
+            "    | Usa pilha de chamadas | Usa variáveis de controle |",
+            "    NUNCA quebre uma linha de tabela em múltiplas linhas de texto, e NUNCA",
+            "    esqueça a linha separadora — sem ela, a tabela não é renderizada e",
+            "    aparece como texto quebrado com barras verticais soltas.",
+            "  - [REGRA CRÍTICA DE FORMATAÇÃO] Para redes/SO/estruturas de dados/grafos/",
+            "    árvores/fluxogramas/traces de execução de algoritmos (busca binária,",
+            "    ordenação, recursão passo a passo, ponteiros em vetores, etc.): NUNCA",
+            "    desenhe diagramas ou traces em ASCII art (caracteres como │─┌└→^, ou",
+            "    posicionamento de texto com espaços para simular setas/ponteiros).",
+            "    Para traces de execução passo a passo (ex: mostrar esq/dir/meio a cada",
+            "    iteração de uma busca binária), use SEMPRE uma tabela Markdown com uma",
+            "    linha por iteração/passo (seguindo a regra de tabelas acima), nunca",
+            "    texto com setas alinhadas por espaçamento.",
+            "    Para grafos, árvores e fluxogramas, use um bloco de código com a",
+            "    linguagem 'mermaid', pois o frontend renderiza isso como diagrama",
+            "    visual real, evitando erros estruturais comuns em ASCII.",
+            "    Exemplo de sintaxe para grafos/árvores:",
+            "    ```mermaid",
+            "    graph TD",
+            "      A --- B",
+            "      A --- C",
+            "      B --- D",
+            "    ```",
+            "    Exemplo de sintaxe para fluxogramas:",
+            "    ```mermaid",
+            "    flowchart LR",
+            "      Inicio --> Processo --> Fim",
+            "    ```",
             "  - Use analogias antes de termos técnicos para iniciantes",
-            "  - Para redes/SO: use diagramas ASCII para ilustrar fluxos",
             "  - Para IHC: relacione com exemplos de apps conhecidos",
             "  - NUNCA entregue a resposta de um exercício diretamente",
             "  - NUNCA proponha novo desafio logo após o estudante dizer que entendeu",

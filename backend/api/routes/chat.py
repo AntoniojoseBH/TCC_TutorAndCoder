@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete as _delete
+from backend.db.models import ChatSession as _ChatSession
 import json
 import uuid
 import asyncio
@@ -27,7 +29,8 @@ async def send_message(
     """Resposta completa sem streaming."""
     session_id = request.session_id or str(uuid.uuid4())
     orchestrator = await build_orchestrator(current_student.id, session_id, db, redis_client)
-    result = await orchestrator.process_message(request.message)
+    attachment = request.attachment.dict() if getattr(request, "attachment", None) else None
+    result = await orchestrator.process_message(request.message, attachment=attachment)
 
     if not result["success"]:
         raise HTTPException(status_code=500, detail=result.get("error", "Erro interno"))
@@ -62,10 +65,12 @@ async def stream_message(
         stream_done = False
         stream_error = None
 
+        attachment = request.attachment.dict() if getattr(request, "attachment", None) else None
+
         async def collect_stream():
             nonlocal stream_done, stream_error
             try:
-                async for chunk in orchestrator.process_message_stream(request.message):
+                async for chunk in orchestrator.process_message_stream(request.message, attachment=attachment):
                     response_chunks.append(chunk)
             except Exception as e:
                 stream_error = str(e)
@@ -159,8 +164,16 @@ async def get_all_sessions(
             .limit(1)
         )
         first_content = first_msg.scalar_one_or_none() or "Nova conversa"
-        # Usa nome customizado do Redis se existir
-        custom_name = await redis_client.get(f"session_name:{row.session_id}")
+
+        # Usa nome customizado do PostgreSQL se existir (persiste entre reinícios)
+        from sqlalchemy import select as _select
+        from backend.db.models import ChatSession as _ChatSession
+
+        custom_result = await db.execute(
+            _select(_ChatSession.custom_name).where(_ChatSession.session_id == row.session_id)
+        )
+        custom_name = custom_result.scalar_one_or_none()
+
         title = custom_name if custom_name else (
             first_content[:50] + ("..." if len(first_content) > 50 else "")
         )
@@ -179,14 +192,32 @@ async def rename_session(
     session_id: str,
     request: dict,
     current_student: Student = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Renomeia uma sessão de chat."""
-    new_name = (request.get("name") or "").strip()
+    new_name = request.get("name", "").strip()
     if not new_name:
         raise HTTPException(status_code=400, detail="Nome não pode ser vazio")
-    await redis_client.set(f"session_name:{session_id}", new_name[:80])
-    return {"ok": True}
 
+    from sqlalchemy import select
+    from backend.db.models import ChatSession
+
+    result = await db.execute(
+        select(ChatSession).where(ChatSession.session_id == session_id)
+    )
+    session_row = result.scalar_one_or_none()
+
+    if session_row:
+        session_row.custom_name = new_name[:80]
+    else:
+        session_row = ChatSession(
+            session_id=session_id,
+            student_id=current_student.id,
+            custom_name=new_name[:80],
+        )
+        db.add(session_row)
+
+    await db.commit()
+    return {"ok": True}
 
 @router.delete("/session-full/{session_id}")
 async def delete_session_full(
@@ -202,9 +233,10 @@ async def delete_session_full(
         .where(Interaction.student_id == current_student.id)
         .where(Interaction.session_id == session_id)
     )
+
+    await db.execute(_delete(_ChatSession).where(_ChatSession.session_id == session_id))
     await db.commit()
     await redis_client.delete(f"session:{session_id}")
-    await redis_client.delete(f"session_name:{session_id}")
     return {"ok": True}
 
 
@@ -267,4 +299,3 @@ async def clear_session(
     """Limpa o histórico de uma sessão."""
     await redis_client.delete(f"session:{session_id}")
     return {"message": "Sessão limpa com sucesso"}
-

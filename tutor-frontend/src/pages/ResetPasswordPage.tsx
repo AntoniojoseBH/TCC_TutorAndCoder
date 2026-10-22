@@ -24,7 +24,10 @@ export default function ResetPasswordPage({ token, onDone }: Props) {
     try {
       const r = await fetch(`${API_BASE}/auth/reset-password`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
+        },
         body: JSON.stringify({ token, new_password: password }),
       });
       if (r.ok) {

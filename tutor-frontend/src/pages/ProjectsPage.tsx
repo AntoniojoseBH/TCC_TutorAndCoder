@@ -477,9 +477,9 @@ function ProjectEditorView({ projectName, files, onBack, onTreeRefresh, analysis
       const c = d.message || "";
       setContent(c); setOriginalContent(c);
       setActiveFile(fname); setDirty(false);
-      // A análise exibida passa a ser a do arquivo recém-aberto
-      // (mostra a análise salva desse arquivo, se houver, ou nada)
-      setAnalysisKey(`${projectName}/${fname}`);
+      // Trocar de arquivo NÃO altera o painel de análise em exibição —
+      // a análise (de projeto ou de arquivo) permanece visível até o
+      // usuário pedir uma nova análise ou fechar clicando no X.
     }
     setLoading(false);
   }
@@ -490,6 +490,19 @@ function ProjectEditorView({ projectName, files, onBack, onTreeRefresh, analysis
     await apiPost("/files/write", { path, content });
     setOriginalContent(content); setDirty(false);
   }
+
+  // Intercepta Ctrl+S (ou Cmd+S no Mac) para salvar o arquivo em edição,
+  // em vez de acionar o "Salvar página como" padrão do navegador.
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const isSaveShortcut = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s";
+      if (!isSaveShortcut) return;
+      e.preventDefault();
+      if (activeFile) saveFile();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeFile, content]);
 
   async function deleteFile(fname: string) {
     if (!window.confirm(`Excluir ${fname}?`)) return;

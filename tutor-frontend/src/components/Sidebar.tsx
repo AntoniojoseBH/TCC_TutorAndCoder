@@ -7,6 +7,11 @@ interface Props {
   setPage: (p: string) => void;
 }
 
+// Oculta "Métricas" da sidebar durante o período de avaliação com usuários
+// (a página não é usada pelos participantes — só pelo avaliador). Volte
+// para "true" depois de concluída a avaliação para reexibi-la.
+const SHOW_METRICS = false;
+
 export default function Sidebar({ page, setPage }: Props) {
   const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
@@ -15,7 +20,7 @@ export default function Sidebar({ page, setPage }: Props) {
   const nav = [
     { id: "chat",     icon: <MessageSquare size={18}/>, label: "Conversas" },
     { id: "projects", icon: <FolderOpen size={18}/>,    label: "Projetos" },
-    { id: "metrics",  icon: <BarChart2 size={18}/>,     label: "Métricas" },
+    ...(SHOW_METRICS ? [{ id: "metrics", icon: <BarChart2 size={18}/>, label: "Métricas" }] : []),
   ];
 
   return (

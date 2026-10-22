@@ -22,29 +22,46 @@ router = APIRouter()
 def get_model():
     from agno.models.anthropic import Claude
     api_key = settings.ANTHROPIC_API_KEY or os.environ.get("ANTHROPIC_API_KEY", "")
-    return Claude(id=settings.LLM_MODEL, api_key=api_key)
+    return Claude(id=settings.LLM_MODEL, api_key=api_key, temperature=0.1)
 
 
 class FileAnalysisRequest(BaseModel):
     path: str
 
 
+class ProjectAnalysisRequest(BaseModel):
+    # Nome da pasta do projeto a ser analisado. Quando omitido/None, mantém
+    # o comportamento antigo (analisa o workspace inteiro) só por segurança
+    # de compatibilidade — o frontend sempre envia esse campo preenchido.
+    project: str | None = None
+
+
 @router.post("/project")
 async def analyze_project(
+    request: ProjectAnalysisRequest,
     current_student: Student = Depends(get_current_student),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Analisa consistência entre todos os arquivos do projeto.
+    Analisa consistência entre todos os arquivos de UM projeto específico.
     Detecta: imports quebrados, funções chamadas que não existem,
     assinaturas incompatíveis, variáveis não definidas entre arquivos.
+
+    IMPORTANTE: a análise é restrita ao projeto informado em request.project.
+    Sem essa restrição, o resumo do "projeto" varria o workspace inteiro do
+    estudante, misturando arquivos de todos os projetos que ele já criou.
     """
     student_id = current_student.id
+    project = request.project
 
     async def generate():
-        yield f"data: {json.dumps({'type': 'status', 'message': 'Lendo todos os arquivos do projeto...'})}\n\n"
+        status_msg = (
+            f"Lendo arquivos do projeto '{project}'..."
+            if project else "Lendo todos os arquivos do workspace..."
+        )
+        yield f"data: {json.dumps({'type': 'status', 'message': status_msg})}\n\n"
 
-        summary = get_project_summary(student_id)
+        summary = get_project_summary(student_id, project=project)
 
         if "nenhum arquivo" in summary.lower() or "projeto vazio" in summary.lower():
             yield f"data: {json.dumps({'type': 'done', 'message': '⚠️ Projeto vazio — crie alguns arquivos primeiro.'})}\n\n"

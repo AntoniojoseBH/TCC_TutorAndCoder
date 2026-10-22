@@ -123,3 +123,15 @@ class GovernanceLog(Base):
     block_reason: Mapped[str] = mapped_column(String, nullable=True)
     risk_score: Mapped[float] = mapped_column(Float, default=0.0)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class ChatSession(Base):
+    """Metadados de sessões de chat — guarda o nome customizado quando
+    o estudante renomeia uma conversa. Sem essa tabela, o nome era salvo
+    só no Redis, que é volátil e perde o dado a cada reinício."""
+    __tablename__ = "chat_sessions"
+
+    session_id: Mapped[str] = mapped_column(String, primary_key=True)
+    student_id: Mapped[str] = mapped_column(ForeignKey("students.id"), nullable=False)
+    custom_name: Mapped[str] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

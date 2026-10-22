@@ -32,9 +32,18 @@ class TokenResponse(BaseModel):
 
 # ── Chat ────────────────────────────────────────────────────────────────────
 
+class ChatAttachment(BaseModel):
+    """Arquivo anexado a uma mensagem do chat — imagem, PDF ou texto/código,
+    sempre em base64. O orquestrador decide como processar conforme media_type."""
+    filename: str
+    media_type: str
+    data: str  # conteúdo do arquivo em base64
+
+
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
+    attachment: Optional[ChatAttachment] = None
 
     @field_validator("message")
     @classmethod

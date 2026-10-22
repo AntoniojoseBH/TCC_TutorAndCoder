@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     # LLM
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
     LLM_PROVIDER: str = "openai"
     LLM_MODEL: str = "gpt-4o"
     LLM_MODEL_FAST: str = "gpt-4o-mini"
