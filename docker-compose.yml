@@ -1,14 +1,15 @@
-version: '3.9'
+# Infraestrutura de desenvolvimento do TutorAndCoder.
+#   docker compose up -d postgres redis
 
 services:
   postgres:
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: tutor
-      POSTGRES_PASSWORD: senha
+      POSTGRES_PASSWORD: senha         
       POSTGRES_DB: tutoria
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"          
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -20,7 +21,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -34,26 +35,17 @@ services:
       - "8000:8000"
     env_file: .env
     environment:
-      - PROJECTS_ROOT=/app/student_projects
+      DATABASE_URL: postgresql+asyncpg://tutor:senha@postgres:5432/tutoria
+      REDIS_URL: redis://redis:6379/0
+      PROJECTS_ROOT: /app/student_projects
     volumes:
       - .:/app
-      - projects_data:/app/student_projects
+      - projects_data:/app/student_projects  
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-
-  frontend:
-    build: .
-    command: streamlit run frontend/app.py --server.port 8501 --server.address 0.0.0.0
-    ports:
-      - "8501:8501"
-    env_file: .env
-    volumes:
-      - .:/app
-    depends_on:
-      - backend
 
 volumes:
   pgdata:
