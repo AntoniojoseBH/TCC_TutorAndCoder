@@ -1,3 +1,4 @@
+<img width="1534" height="1025" alt="arquite" src="https://github.com/user-attachments/assets/bf3dc7fa-c8c0-4e57-91e9-362aee19c2d7" />
 # TutorAndCoder
 
 **Trabalho de Conclusão de Curso — CEFET-MG**
