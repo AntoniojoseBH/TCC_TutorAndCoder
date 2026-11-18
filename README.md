@@ -1,4 +1,3 @@
-<img width="1534" height="1025" alt="arquite" src="https://github.com/user-attachments/assets/bf3dc7fa-c8c0-4e57-91e9-362aee19c2d7" />
 # TutorAndCoder
 
 **Trabalho de Conclusão de Curso — CEFET-MG**
@@ -39,7 +38,7 @@ A arquitetura é composta por um **orquestrador** e **seis agentes especializado
 
 ## Arquitetura
 
-![Arquitetura do TutorAndCoder](docs/arquitetura.png)
+<img width="1534" height="1025" alt="arquite" src="https://github.com/user-attachments/assets/bf3dc7fa-c8c0-4e57-91e9-362aee19c2d7" />
 
 O frontend (React) se comunica com a API (FastAPI). A API aciona o orquestrador, que coordena os agentes. Os agentes usam o Claude como modelo de linguagem (com o Gemini como provedor de reserva), o PostgreSQL para dados permanentes, o Redis para o cache de sessão e de perfil, e o Judge0 para executar código.
 
