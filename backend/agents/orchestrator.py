@@ -366,7 +366,7 @@ class AgentOrchestrator:
                 create_student_model_agent(),
                 create_pedagogical_agent(),
                 create_evaluation_agent(),
-                create_file_editor_agent(),
+                create_file_editor_agent(student_id),
             ],
             # Habilita memória nativa do Agno — mantém histórico entre turnos
             add_history_to_context=True,
