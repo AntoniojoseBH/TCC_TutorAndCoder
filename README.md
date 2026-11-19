@@ -6,7 +6,7 @@
 
 **Aluno:** Antônio José Peixoto Chaves
 
-**Orientadora:** Glívia Angélica Rodrigues Barbosa
+**Orientadora:** Profa. Dra. Glívia Angélica Rodrigues Barbosa
 
 ---
 
